@@ -551,16 +551,12 @@ static NSArray *YouModHoldSpeedValues(void) {
     return @[@0.0, @0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @3.0, @4.0, @5.0];
 }
 
-static CGFloat YouModSpeedForHoldIndex(NSInteger index) {
+static float YouModSpeedForHoldIndex(NSInteger index) {
     NSArray *values = YouModHoldSpeedValues();
     return [values[index] floatValue];
 }
 
 %hook YTMainAppVideoPlayerOverlayView
-- (void)setLongPressGestureRecognizer:(id)arg {
-    if (INTFORVAL(HoldToSpeedIndex) != 0) return;
-    %orig;
-}
 // Remove Dark Background in Overlay
 - (void)setBackgroundVisible:(BOOL)arg1 isGradientBackground:(BOOL)arg2 {
     BOOL temp = IS_ENABLED(RemoveDarkOverlay) ? NO : arg1;
@@ -575,6 +571,26 @@ static CGFloat YouModSpeedForHoldIndex(NSInteger index) {
 - (void)layoutSubviews {
     %orig;
     if (IS_ENABLED(HideCastButtonPlayer)) self.playbackRouteButton.hidden = YES;
+}
+%end
+
+static BOOL setSpeed = NO;
+%hook YTSpeedmasterController
+- (void)speedmasterDidLongPressWithRecogizer:(UILongPressGestureRecognizer *)gesture {
+    if (INTFORVAL(HoldToSpeedIndex) != 0) {
+        setSpeed = YES;
+        %orig;
+        setSpeed = NO;
+    } else {
+        %orig;
+    }
+}
+%end
+
+%hook YTPlaybackRateModel
+- (id)initWithRate:(float)rate {
+    if (rate >= 2.0 && setSpeed) rate = YouModSpeedForHoldIndex(INTFORVAL(HoldToSpeedIndex));
+    return %orig(rate);
 }
 %end
 
@@ -711,11 +727,6 @@ static CGFloat YouModSpeedForHoldIndex(NSInteger index) {
             playerViewController.YouModTapGesture.delegate = playerViewController;
             [pv addGestureRecognizer:playerViewController.YouModTapGesture];
         }
-        if (!playerViewController.YouModHoldGesture && INTFORVAL(HoldToSpeedIndex) != 0) {
-            playerViewController.YouModHoldGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:playerViewController action:@selector(YouModHoldToSpeed:)];
-            playerViewController.YouModHoldGesture.minimumPressDuration = 0.4;
-            [pv addGestureRecognizer:playerViewController.YouModHoldGesture];   
-        }
     }
     %orig;
 }
@@ -767,14 +778,9 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 %property (nonatomic, retain) UILabel *YouModGestureHUD;
 %property (nonatomic, strong) UIView *YouModSpeedToastView;
 %property (nonatomic, strong) UILabel *YouModSpeedToastLabel;
-%property (nonatomic, retain) UILongPressGestureRecognizer *YouModHoldGesture;
 %new
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
     if (gestureRecognizer == self.YouModPanGesture) {
-        if (self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
-            return NO;
-        }
-
         if (isRelatedVideosPanelEnabled(self)) return NO;          
 
         UIPanGestureRecognizer *panGesture = (UIPanGestureRecognizer *)gestureRecognizer;
@@ -814,15 +820,6 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
             return YES;
         }
-    }
-    if (gestureRecognizer == self.YouModHoldGesture) {
-        if (self.YouModPanGesture && (self.YouModPanGesture.state == UIGestureRecognizerStateBegan || self.YouModPanGesture.state == UIGestureRecognizerStateChanged)) {
-            return NO;
-        }
-        if (isRelatedVideosPanelEnabled(self)) return NO;
-        CGPoint touchLocation = [gestureRecognizer locationInView:self.view];
-        CGFloat activeWidth = remainingOverlayWidth(self, self.view.bounds.size.width);
-        if (touchLocation.x > activeWidth) return NO;
     }
     return YES;
 }
@@ -1048,9 +1045,6 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
     if (gestureRecognizer == self.YouModPanGesture && [otherGestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
         return YES;
     }
-    if (gestureRecognizer == self.YouModHoldGesture && ![otherGestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
-        return YES;
-    }
     return NO;
 }
 
@@ -1058,12 +1052,6 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
     if (gestureRecognizer == self.YouModPanGesture) {
         return NO; 
-    }
-    if (gestureRecognizer == self.YouModHoldGesture || otherGestureRecognizer == self.YouModHoldGesture) {
-        if ([gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]] || [otherGestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
-            return NO;
-        }
-        return YES;
     }
     return YES;
 }
@@ -1094,9 +1082,6 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModSetAutoSpeed {
-    if (self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
-        return;
-    }
     if (IS_ENABLED(GlobalSpeedLocked)) {
         NSInteger speedIndex = INTFORVAL(HoldToSpeedIndex);
         CGFloat speed = YouModSpeedForHoldIndex(speedIndex);

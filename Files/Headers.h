@@ -433,7 +433,6 @@ typedef NS_ENUM(NSUInteger, GestureSection) {
 @property (nonatomic, assign, readonly) BOOL isPlayingAd;
 @property (nonatomic, strong) UIView *YouModSpeedToastView;
 @property (nonatomic, strong) UILabel *YouModSpeedToastLabel;
-@property (nonatomic, retain) UILongPressGestureRecognizer *YouModHoldGesture;
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer;
 - (void)YouModAutoFullscreen;
 - (void)YouModSetAutoSpeed;
